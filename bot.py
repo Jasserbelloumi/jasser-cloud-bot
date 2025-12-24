@@ -22,43 +22,50 @@ def notify(msg, img=None):
     except: pass
 
 def run_bot():
-    notify("🔄 محاولة الدخول عبر الصفحة الرئيسية لتجنب خطأ 404...")
+    notify("🚀 جاري محاولة تسجيل الحساب الآن...")
     options = Options()
     options.add_argument('--headless')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
-    # تحديث الـ User-Agent لنسخة أحدث
-    options.add_argument('user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+    options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
     
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
     wait = WebDriverWait(driver, 15)
 
     try:
-        # الدخول للصفحة الرئيسية أولاً
-        driver.get("https://www.like4like.org/")
+        # الدخول للموقع عبر الرابط المباشر (جربنا أنه يعمل بعد الدخول للرئيسية)
+        driver.get("https://www.like4like.org/register.php")
         time.sleep(5)
 
-        # البحث عن زر Register والضغط عليه
-        try:
-            register_btn = wait.until(EC.element_to_be_clickable((By.PARTIAL_LINK_TEXT, "REGISTER")))
-            register_btn.click()
-            time.sleep(5)
-        except:
-            driver.get("https://www.like4like.org/register.php") # محاولة الرابط البديل بصيغة php
+        user = f"jsr{random.randint(10000, 99999)}"
+        pwd = "Jasser@User2025"
+        email = f"{user}@1secmail.com"
 
-        # تفقد هل ظهرت الحقول؟
-        if "username" in driver.page_source:
-            notify("✅ تم الوصول لصفحة التسجيل بنجاح! جاري ملء البيانات...")
-            # هنا نضع منطق الملء...
-            user = f"jsr_{random.randint(1000, 9999)}"
-            driver.find_element(By.ID, "username").send_keys(user)
-            # ... (باقي الكود)
-        else:
-            driver.save_screenshot("check.png")
-            notify("⚠️ لا يزال الموقع يظهر صفحة مختلفة. انظر للصورة:", "check.png")
+        # ملء البيانات
+        wait.until(EC.presence_of_element_located((By.ID, "username"))).send_keys(user)
+        driver.find_element(By.ID, "password").send_keys(pwd)
+        driver.find_element(By.ID, "password_re").send_keys(pwd)
+        driver.find_element(By.ID, "email").send_keys(email)
+        driver.find_element(By.ID, "email_re").send_keys(email)
+        driver.find_element(By.ID, "agree").click()
+
+        notify(f"📝 تم ملء البيانات:\n👤: {user}\n📧: {email}\nجاري الضغط على التسجيل...")
+        
+        # الضغط على زر التسجيل (نبحث عنه بالقيمة أو النص)
+        try:
+            submit_btn = driver.find_element(By.NAME, "submit")
+            submit_btn.click()
+            time.sleep(7)
+        except:
+            driver.save_screenshot("error_btn.png")
+            notify("⚠️ لم أجد زر التسجيل!", "error_btn.png")
+
+        # التقاط صورة للنتيجة النهائية
+        driver.save_screenshot("result.png")
+        notify("📸 انظر للنتيجة بعد محاولة التسجيل:", "result.png")
 
     except Exception as e:
-        notify(f"❌ خطأ تقني جديد: {str(e)}")
+        notify(f"❌ خطأ تقني: {str(e)}")
     finally:
         driver.quit()
 
