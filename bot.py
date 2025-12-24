@@ -1,17 +1,12 @@
 import time
 import os
 import requests
-import traceback
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from webdriver_manager.chrome import ChromeDriverManager
-try:
-    from PIL import Image, ImageDraw
-except ImportError:
-    os.system("pip install Pillow")
-    from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw
 
 TOKEN = "8295326912:AAHvVkEnCcryYxnovkD8yQawhBizJA_QE6w"
 CHAT_ID = "5653032481"
@@ -19,64 +14,64 @@ CHAT_ID = "5653032481"
 def send_msg(text):
     requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json={'chat_id': CHAT_ID, 'text': text})
 
-def draw_grid_and_send(driver):
-    try:
-        driver.save_screenshot("raw.png")
-        with Image.open("raw.png") as img:
-            draw = ImageDraw.Draw(img)
-            w, h = img.size
-            rows, cols = 4, 4
-            sw, sh = w // cols, h // rows
-            for r in range(rows):
-                for c in range(cols):
-                    x, y = c * sw, r * sh
-                    draw.rectangle([x, y, x+sw, y+sh], outline="red", width=3)
-                    draw.text((x+10, y+10), str((r*cols)+c+1), fill="red")
-            img.save("grid.png")
+def draw_precise_grid(input_path, output_path):
+    with Image.open(input_path) as img:
+        draw = ImageDraw.Draw(img)
+        width, height = img.size
         
-        with open("grid.png", 'rb') as f:
-            requests.post(f"https://api.telegram.org/bot{TOKEN}/sendPhoto", 
-                          data={'chat_id': CHAT_ID, 'caption': "🔢 اختر المربعات:"}, files={'photo': f})
-    except Exception as e:
-        send_msg(f"⚠️ فشل رسم الشبكة لكن سأرسل الصورة عادية: {str(e)}")
-        with open("raw.png", 'rb') as f:
-            requests.post(f"https://api.telegram.org/bot{TOKEN}/sendPhoto", 
-                          data={'chat_id': CHAT_ID}, files={'photo': f})
+        # تقسيم الكابتشا لـ 4 أعمدة و 4 صفوف (مربعات أصغر وأدق)
+        cols, rows = 4, 4
+        step_w, step_h = width // cols, height // rows
+        
+        counter = 1
+        for r in range(rows):
+            for c in range(cols):
+                x1, y1 = c * step_w, r * step_h
+                x2, y2 = x1 + step_w, y1 + step_h
+                
+                # رسم المربع باللون الأصفر (أوضح) مع رقم صغير في الزاوية
+                draw.rectangle([x1, y1, x2, y2], outline="yellow", width=2)
+                draw.text((x1 + 5, y1 + 5), str(counter), fill="yellow")
+                counter += 1
+        img.save(output_path)
 
 def run_bot():
     options = Options()
     options.add_argument('--headless')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
-    options.add_argument('--window-size=500,1500')
-    options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+    # زيادة العرض والطول لضمان عدم قطع الكابتشا
+    options.add_argument('--window-size=800,2000') 
     
-    driver = None
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+    
     try:
-        send_msg("🚀 بدأت المحاولة الآن... انتظر 20 ثانية.")
-        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
         driver.get("https://www.like4like.org/register.php")
         time.sleep(12)
-
-        # محاولة النقر
+        
+        # محاولة النقر على الكابتشا
         iframes = driver.find_elements(By.TAG_NAME, "iframe")
         for frame in iframes:
             driver.switch_to.frame(frame)
             if "recaptcha" in driver.page_source:
-                cb = driver.find_elements(By.ID, "recaptcha-anchor")
-                if cb:
-                    driver.execute_script("arguments[0].click();", cb[0])
+                anchor = driver.find_elements(By.ID, "recaptcha-anchor")
+                if anchor:
+                    driver.execute_script("arguments[0].click();")
                     driver.switch_to.default_content()
-                    time.sleep(8)
+                    time.sleep(8) # انتظار الصور
                     break
             driver.switch_to.default_content()
 
-        draw_grid_and_send(driver)
+        # تصوير وإرسال الشبكة
+        driver.save_screenshot("raw.png")
+        draw_precise_grid("raw.png", "grid_view.png")
+        
+        with open("grid_view.png", 'rb') as f:
+            requests.post(f"https://api.telegram.org/bot{TOKEN}/sendPhoto", 
+                          data={'chat_id': CHAT_ID, 'caption': "🔢 انظر للأرقام الصفراء وأخبرني أين توجد الصور المطلوبة:"}, files={'photo': f})
 
-    except Exception as e:
-        send_msg(f"❌ خطأ في السكربت:\n{traceback.format_exc()}")
     finally:
-        if driver: driver.quit()
+        driver.quit()
 
 if __name__ == "__main__":
     run_bot()
