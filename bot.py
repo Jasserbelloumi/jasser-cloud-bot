@@ -1,6 +1,7 @@
 import time
 import os
 import requests
+import traceback
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
@@ -8,26 +9,25 @@ from selenium.webdriver.common.by import By
 from webdriver_manager.chrome import ChromeDriverManager
 from PIL import Image, ImageDraw
 
+# 🔑 بياناتك
 TOKEN = "8295326912:AAHvVkEnCcryYxnovkD8yQawhBizJA_QE6w"
 CHAT_ID = "5653032481"
 
 def send_msg(text):
     requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json={'chat_id': CHAT_ID, 'text': text})
 
-def get_last_command():
+def get_updates(last_id):
     try:
-        url = f"https://api.telegram.org/bot{TOKEN}/getUpdates"
-        res = requests.get(url).json()
-        if res['result']:
-            return res['result'][-1]['message']['text'], res['result'][-1]['update_id']
-    except: pass
-    return None, None
+        url = f"https://api.telegram.org/bot{TOKEN}/getUpdates?offset={last_id + 1}"
+        res = requests.get(url, timeout=10).json()
+        return res.get('result', [])
+    except: return []
 
 def draw_grid(input_path, output_path):
     with Image.open(input_path) as img:
         draw = ImageDraw.Draw(img)
         w, h = img.size
-        rows, cols = 6, 6  # شبكة 36 مربعاً كما طلبنا
+        rows, cols = 6, 6
         sw, sh = w // cols, h // rows
         for r in range(rows):
             for c in range(cols):
@@ -35,9 +35,10 @@ def draw_grid(input_path, output_path):
                 draw.rectangle([x, y, x + sw, y + sh], outline="yellow", width=2)
                 draw.text((x + 5, y + 5), str((r * cols) + c + 1), fill="yellow")
         img.save(output_path)
-        return sw, sh # نحتاج حجم المربع لحساب إحداثيات النقر
+        return sw, sh
 
 def run_bot():
+    send_msg("🚀 V44 متصل الآن.. جاري فتح الصفحة والتقاط الشبكة.")
     options = Options()
     options.add_argument('--headless')
     options.add_argument('--no-sandbox')
@@ -46,46 +47,40 @@ def run_bot():
     
     try:
         driver.get("https://www.like4like.org/register.php")
-        time.sleep(10)
+        time.sleep(12)
         
-        # 1. تفعيل الكابتشا والتقاط الصورة المرقمة
+        # التقاط الشبكة الأولى
         driver.save_screenshot("raw.png")
         sw, sh = draw_grid("raw.png", "grid.png")
         with open("grid.png", 'rb') as f:
-            requests.post(f"https://api.telegram.org/bot{TOKEN}/sendPhoto", data={'chat_id': CHAT_ID}, files={'photo': f})
-        
-        send_msg("🎯 أرسل أرقام المربعات مفصولة بفاصلة (مثال: 14,15,20)")
+            requests.post(f"https://api.telegram.org/bot{TOKEN}/sendPhoto", data={'chat_id': CHAT_ID, 'caption': "🎯 أرسل أرقام المربعات للضغط (مثال: 10,11)"}, files={'photo': f})
 
-        # 2. حلقة الاستماع للأوامر والضغط
-        last_id = 0
+        last_update_id = 0
         while True:
-            text, up_id = get_last_command()
-            if text and up_id > last_id:
-                last_id = up_id
-                if text.lower() == 'done': break
-                
-                nums = text.split(',')
-                for n in nums:
-                    try:
-                        n = int(n.strip())
-                        # حساب موقع النقر بناءً على رقم المربع (1-36)
-                        row = (n - 1) // 6
-                        col = (n - 1) % 6
-                        click_x = (col * sw) + (sw // 2)
-                        click_y = (row * sh) + (sh // 2)
-                        
-                        # تنفيذ النقرة باستخدام JavaScript
-                        driver.execute_script(f"document.elementFromPoint({click_x}, {click_y}).click();")
-                        send_msg(f"✅ تم النقر على المربع {n}")
-                    except: pass
-                
-                time.sleep(2)
-                driver.save_screenshot("result.png")
-                with open("result.png", 'rb') as f:
-                    requests.post(f"https://api.telegram.org/bot{TOKEN}/sendPhoto", data={'chat_id': CHAT_ID, 'caption': "الصورة بعد النقر"}, files={'photo': f})
+            updates = get_updates(last_update_id)
+            for update in updates:
+                last_update_id = update['update_id']
+                if 'message' in update and 'text' in update['message']:
+                    cmd = update['message']['text']
+                    send_msg(f"⏳ جاري تنفيذ النقرات: {cmd}")
+                    
+                    indices = cmd.replace(' ', '').split(',')
+                    for idx in indices:
+                        if idx.isdigit():
+                            n = int(idx)
+                            row, col = (n - 1) // 6, (n - 1) % 6
+                            cx, cy = (col * sw) + (sw // 2), (row * sh) + (sh // 2)
+                            # تنفيذ النقر عبر JS لضمان الدقة
+                            driver.execute_script(f"document.elementFromPoint({cx}, {cy}).click();")
+                    
+                    time.sleep(3)
+                    driver.save_screenshot("after.png")
+                    with open("after.png", 'rb') as f:
+                        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendPhoto", data={'chat_id': CHAT_ID, 'caption': "✅ النتيجة بعد النقر"}, files={'photo': f})
+            time.sleep(2)
             
-            time.sleep(3)
-
+    except Exception as e:
+        send_msg(f"❌ خطأ: {str(e)}")
     finally:
         driver.quit()
 
