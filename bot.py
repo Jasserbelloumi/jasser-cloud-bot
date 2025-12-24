@@ -9,75 +9,84 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 
+# بياناتك
 TOKEN = "8295326912:AAHvVkEnCcryYxnovkD8yQawhBizJA_QE6w"
 CHAT_ID = "5653032481"
-API_KEY_2CAPTCHA = "efb4e119f4ffbfdad7696ad3dffa22f2" # تأكد من صحة المفتاح
 
-def notify(msg, img=None):
+def notify_and_wait(msg, img=None):
+    """إرسال إشعار وانتظار رد من المستخدم عبر تليجرام"""
     try:
         if img:
             with open(img, 'rb') as f:
-                requests.post(f"https://api.telegram.org/bot{TOKEN}/sendPhoto", data={'chat_id': CHAT_ID, 'caption': msg}, files={'photo': f})
+                requests.post(f"https://api.telegram.org/bot{TOKEN}/sendPhoto", 
+                              data={'chat_id': CHAT_ID, 'caption': msg}, files={'photo': f})
         else:
-            requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json={'chat_id': CHAT_ID, 'text': msg})
-    except: pass
-
-def solve_captcha(site_key, url):
-    print("🧩 جاري طلب حل الكابتشا...")
-    s = requests.Session()
-    res = s.get(f"http://2captcha.com/in.php?key={API_KEY_2CAPTCHA}&method=userrecaptcha&googlekey={site_key}&pageurl={url}").text
-    if 'OK|' not in res: return None
-    captcha_id = res.split('|')[1]
-    for _ in range(20):
-        time.sleep(5)
-        res = s.get(f"http://2captcha.com/res.php?key={API_KEY_2CAPTCHA}&action=get&id={captcha_id}").text
-        if 'OK|' in res: return res.split('|')[1]
-    return None
+            requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", 
+                          json={'chat_id': CHAT_ID, 'text': msg})
+        
+        print("⏳ بانتظار ردك على تليجرام للمتابعة...")
+        # الحصول على آخر رسالة قبل بدء الانتظار لتجنب الردود القديمة
+        last_update_id = requests.get(f"https://api.telegram.org/bot{TOKEN}/getUpdates").json()['result'][-1]['update_id'] if requests.get(f"https://api.telegram.org/bot{TOKEN}/getUpdates").json()['result'] else 0
+        
+        while True:
+            time.sleep(5)
+            updates = requests.get(f"https://api.telegram.org/bot{TOKEN}/getUpdates", params={'offset': last_update_id + 1}).json()
+            for update in updates.get('result', []):
+                if str(update['message']['chat']['id']) == CHAT_ID:
+                    return update['message'].get('text', 'done')
+    except Exception as e:
+        print(f"Error in TG communication: {e}")
+        return "error"
 
 def run_bot():
-    notify("🛡️ جاري محاولة كسر حماية الموقع...")
+    print("🚀 تشغيل البوت بنظام التحكم عن بعد...")
     options = Options()
     options.add_argument('--headless')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
+    options.add_argument('--window-size=1200,800')
     options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
     
-    # تمويه إضافي لمنع اكتشاف الـ WebDriver
-    options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    options.add_experimental_option('useAutomationExtension', False)
-
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
-    driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+    wait = WebDriverWait(driver, 20)
 
     try:
-        url = "https://www.like4like.org/register.php"
-        driver.get(url)
-        time.sleep(8)
+        driver.get("https://www.like4like.org/register.php")
+        time.sleep(10)
 
-        # التحقق من وجود كابتشا الحماية (reCAPTCHA)
-        if "g-recaptcha" in driver.page_source or "captcha" in driver.page_source:
-            notify("🧩 تم اكتشاف كابتشا حماية، جاري الحل...")
-            site_key = "6Ldy_XMUAAAAAOB9b9_918X5S4S_4_6y_S_4_6y" # المستخرج من Like4Like
-            token = solve_captcha(site_key, url)
+        # التحقق من وجود صفحة 404 أو الكابتشا التي أرسلت صورتها
+        if "reCAPTCHA" in driver.page_source or "g-recaptcha" in driver.page_source or "Error 404" in driver.page_source:
+            driver.save_screenshot("problem.png")
+            notify_and_wait("⚠️ واجهت صفحة الحماية/404. يرجى حل الكابتشا إذا ظهرت أو كتابة أي شيء للمتابعة بعد أن أغير لك الإعدادات:", "problem.png")
+        
+        # ملء البيانات (محاولة عمياء بعد ردك)
+        user = f"jsr{random.randint(1000, 9999)}"
+        pwd = "Jasser@User2025"
+        email = f"{user}@1secmail.com"
+
+        try:
+            wait.until(EC.presence_of_element_located((By.ID, "username"))).send_keys(user)
+            driver.find_element(By.ID, "password").send_keys(pwd)
+            driver.find_element(By.ID, "password_re").send_keys(pwd)
+            driver.find_element(By.ID, "email").send_keys(email)
+            driver.find_element(By.ID, "email_re").send_keys(email)
+            driver.execute_script("document.getElementById('agree').click();")
             
-            if token:
-                driver.execute_script(f'document.getElementById("g-recaptcha-response").innerHTML="{token}";')
-                driver.execute_script("document.querySelector('form').submit();")
-                time.sleep(10)
-                notify("✅ تم تخطي حماية الكابتشا بنجاح!")
-            else:
-                notify("❌ فشل حل الكابتشا (رصيد غير كافٍ أو وقت طويل)")
+            driver.save_screenshot("filling.png")
+            notify_and_wait(f"📝 ملأت البيانات:\n👤 {user}\n📧 {email}\nهل أضغط تسجيل؟ (ارسل أي رسالة للضغط)", "filling.png")
+            
+            driver.execute_script("document.getElementsByName('submit')[0].click();")
+            time.sleep(10)
+            
+            driver.save_screenshot("final_result.png")
+            requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json={'chat_id': CHAT_ID, 'text': "🏁 تمت العملية، تفقد الصورة النهائية."})
+            with open("final_result.png", 'rb') as f:
+                requests.post(f"https://api.telegram.org/bot{TOKEN}/sendPhoto", data={'chat_id': CHAT_ID}, files={'photo': f})
 
-        # الآن نحاول البحث عن حقول التسجيل
-        if "username" in driver.page_source:
-            notify("📝 دخلنا لصفحة التسجيل الحقيقية! جاري الإدخال...")
-            # (نفس منطق ملء البيانات السابق...)
-        else:
-            driver.save_screenshot("after_bypass.png")
-            notify("⚠️ لا زال هناك حاجز. انظر الصورة:", "after_bypass.png")
+        except Exception as e:
+            driver.save_screenshot("error.png")
+            requests.post(f"https://api.telegram.org/bot{TOKEN}/sendPhoto", data={'chat_id': CHAT_ID, 'caption': f"❌ فشل الإدخال: {str(e)[:100]}"}, files={'photo': open("error.png", 'rb')})
 
-    except Exception as e:
-        notify(f"🚨 خطأ: {str(e)}")
     finally:
         driver.quit()
 
