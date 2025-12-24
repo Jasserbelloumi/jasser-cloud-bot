@@ -32,32 +32,32 @@ def run_bot():
         driver.get("https://www.like4like.org/register.php")
         time.sleep(10)
         
-        # التعامل مع صفحة 404 والكابتشا
         if "Error 404" in driver.page_source:
-            send_snap(driver, "⚠️ اكتشفت صفحة الحماية 404. سأحاول إدخال نص والضغط على الكابتشا.")
+            send_snap(driver, "🔍 محاولة تجاوز الحظر بالضغط المباشر (JS)...")
             
             try:
-                # 1. إدخال نص في الحقل الموجود
+                # 1. إدخال النص في الحقل
                 text_area = driver.find_element(By.TAG_NAME, "textarea")
-                text_area.send_keys("I want to register a new account")
+                text_area.send_keys("Accessing registration page")
                 
-                # 2. الانتقال للـ iframe الخاص بالكابتشا
+                # 2. الانتقال للـ iframe والضغط عبر جافا سكربت
                 frames = driver.find_elements(By.TAG_NAME, "iframe")
                 if frames:
                     driver.switch_to.frame(frames[0])
-                    checkbox = driver.find_element(By.ID, "recaptcha-anchor")
-                    checkbox.click()
+                    # استخدام جافا سكربت للضغط لتجنب "Intercepted Click"
+                    driver.execute_script("document.getElementById('recaptcha-anchor').click();")
                     driver.switch_to.default_content()
-                    
+                
                 time.sleep(5)
-                # 3. الضغط على زر Submit
+                # 3. الضغط على Submit عبر جافا سكربت أيضاً
                 submit_btn = driver.find_element(By.CSS_SELECTOR, "input[type='submit']")
-                submit_btn.click()
+                driver.execute_script("arguments[0].click();", submit_btn)
                 
                 time.sleep(10)
-                send_snap(driver, "📸 بعد محاولة تخطي صفحة 404")
+                send_snap(driver, "📸 النتيجة بعد الضغط المباشر")
+                
             except Exception as e:
-                send_msg(f"❌ فشل التفاعل التلقائي: {str(e)}")
+                send_msg(f"❌ فشل الضغط حتى مع JS: {str(e)[:100]}")
 
     finally:
         driver.quit()
