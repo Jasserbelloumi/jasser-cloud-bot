@@ -6,21 +6,46 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from webdriver_manager.chrome import ChromeDriverManager
+from PIL import Image, ImageDraw, ImageFont
 
 TOKEN = "8295326912:AAHvVkEnCcryYxnovkD8yQawhBizJA_QE6w"
 CHAT_ID = "5653032481"
 
-def send_msg(text):
-    requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json={'chat_id': CHAT_ID, 'text': text})
+def draw_grid_on_image(image_path):
+    # فتح الصورة ورسم الشبكة
+    with Image.open(image_path) as img:
+        draw = ImageDraw.Draw(img)
+        width, height = img.size
+        
+        # تقسيم العرض والطول (شبكة 4x4 للكابتشا)
+        rows, cols = 4, 4
+        step_w = width // cols
+        step_h = height // rows
+        
+        counter = 1
+        for r in range(rows):
+            for c in range(cols):
+                # تحديد زوايا المربع
+                x1, y1 = c * step_w, r * step_h
+                x2, y2 = x1 + step_w, y1 + step_h
+                
+                # رسم المربع والرقم
+                draw.rectangle([x1, y1, x2, y2], outline="red", width=3)
+                draw.text((x1 + 10, y1 + 10), str(counter), fill="red")
+                counter += 1
+        img.save("grid_screenshot.png")
 
-def send_full_snap(driver, caption):
-    # إجبار المتصفح على أبعاد ضخمة جداً لرؤية النافذة العائمة
-    driver.set_window_size(600, 2500)
-    time.sleep(2)
-    path = "full_view.png"
-    driver.save_screenshot(path)
-    with open(path, 'rb') as f:
-        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendPhoto", data={'chat_id': CHAT_ID, 'caption': caption}, files={'photo': f})
+def send_grid_snap(driver, caption):
+    driver.set_window_size(600, 1500)
+    # نركز فقط على منطقة الكابتشا (تقريبياً)
+    driver.save_screenshot("temp.png")
+    
+    # رسم الشبكة
+    draw_grid_on_image("temp.png")
+    
+    with open("grid_screenshot.png", 'rb') as f:
+        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendPhoto", 
+                      data={'chat_id': CHAT_ID, 'caption': caption}, files={'photo': f})
 
 def run_bot():
     options = Options()
@@ -35,30 +60,22 @@ def run_bot():
         driver.get("https://www.like4like.org/register.php")
         time.sleep(10)
 
-        # 1. البحث عن إطار الكابتشا والنقر عليه
+        # الضغط على الكابتشا لإظهار الصور
         iframes = driver.find_elements(By.TAG_NAME, "iframe")
         for frame in iframes:
-            try:
-                driver.switch_to.frame(frame)
+            driver.switch_to.frame(frame)
+            if "recaptcha" in driver.page_source:
                 checkbox = driver.find_elements(By.ID, "recaptcha-anchor")
                 if checkbox:
                     driver.execute_script("arguments[0].click();", checkbox[0])
                     driver.switch_to.default_content()
-                    time.sleep(7) # انتظار ظهور الصور
+                    time.sleep(8)
                     break
-                driver.switch_to.default_content()
-            except:
-                driver.switch_to.default_content()
+            driver.switch_to.default_content()
 
-        # 2. الآن، أهم خطوة: جعل نافذة الكابتشا تظهر بالكامل عبر التمرير (Scrolling)
-        driver.execute_script("window.scrollTo(0, document.body.scrollHeight / 2);")
-        time.sleep(2)
-        
-        # 3. إرسال الصورة الكاملة
-        send_full_snap(driver, "📸 لقطة شاشة مكبرة وعميقة. هل تظهر الصور كاملة الآن؟")
+        # إرسال الصورة المرقمة
+        send_grid_snap(driver, "🔢 اختر أرقام المربعات المطلوبة (مثلاً: 1, 5, 9)")
 
-    except Exception as e:
-        send_msg(f"❌ خطأ: {str(e)}")
     finally:
         driver.quit()
 
