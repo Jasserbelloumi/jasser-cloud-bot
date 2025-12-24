@@ -7,73 +7,77 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from webdriver_manager.chrome import ChromeDriverManager
+from PIL import Image, ImageDraw, ImageFont
 
-# 🔑 تأكد من أن هذه البيانات صحيحة 100%
+# 🔑 بياناتك الصحيحة
 TOKEN = "8295326912:AAHvVkEnCcryYxnovkD8yQawhBizJA_QE6w"
 CHAT_ID = "5653032481"
 
 def send_msg(text):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    try:
-        requests.post(url, json={'chat_id': CHAT_ID, 'text': text}, timeout=10)
-    except:
-        pass
+    requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json={'chat_id': CHAT_ID, 'text': text})
 
-def send_photo(photo_path, caption):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
-    try:
-        with open(photo_path, 'rb') as f:
-            requests.post(url, data={'chat_id': CHAT_ID, 'caption': caption}, files={'photo': f}, timeout=20)
-    except Exception as e:
-        send_msg(f"❌ فشل إرسال الصورة: {str(e)}")
+def draw_grid_and_send(image_path):
+    with Image.open(image_path) as img:
+        draw = ImageDraw.Draw(img)
+        width, height = img.size
+        # تقسيم 4x4
+        rows, cols = 4, 4
+        sw, sh = width // cols, height // rows
+        
+        counter = 1
+        for r in range(rows):
+            for c in range(cols):
+                x1, y1 = c * sw, r * sh
+                x2, y2 = x1 + sw, y1 + sh
+                # رسم المربع الأصفر
+                draw.rectangle([x1, y1, x2, y2], outline="yellow", width=4)
+                # كتابة الرقم في الزاوية
+                draw.text((x1 + 15, y1 + 15), str(counter), fill="yellow")
+                counter += 1
+        
+        grid_path = "grid_final.png"
+        img.save(grid_path)
+        with open(grid_path, 'rb') as f:
+            requests.post(f"https://api.telegram.org/bot{TOKEN}/sendPhoto", 
+                          data={'chat_id': CHAT_ID, 'caption': "🔢 الشبكة جاهزة بالأبعاد المطلوبة:"}, files={'photo': f})
 
 def run_bot():
-    # 1. إرسال رسالة تجربة فورية
-    send_msg("🔔 البوت بدأ العمل الآن.. جاري تشغيل المحرك.")
-    
     options = Options()
     options.add_argument('--headless')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
-    options.add_argument('--window-size=1000,2000')
+    # 📏 الأبعاد التي طلبت تثبيتها
+    options.add_argument('--window-size=900,1800')
     options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
     
     driver = None
     try:
         driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
-        
-        send_msg("🌐 جاري فتح الموقع...")
         driver.get("https://www.like4like.org/register.php")
-        time.sleep(12)
-        
-        # محاولة النقر على الكابتشا
+        time.sleep(10)
+
+        # البحث عن الكابتشا والنقر
         iframes = driver.find_elements(By.TAG_NAME, "iframe")
         for frame in iframes:
-            try:
-                driver.switch_to.frame(frame)
-                checkbox = driver.find_elements(By.ID, "recaptcha-anchor")
-                if checkbox:
-                    driver.execute_script("arguments[0].click();", checkbox[0])
+            driver.switch_to.frame(frame)
+            if "recaptcha" in driver.page_source:
+                cb = driver.find_elements(By.ID, "recaptcha-anchor")
+                if cb:
+                    driver.execute_script("arguments[0].click();", cb[0])
                     driver.switch_to.default_content()
-                    send_msg("🖱️ تم النقر على المربع.. انتظار الصور.")
                     time.sleep(10)
                     break
-                driver.switch_to.default_content()
-            except:
-                driver.switch_to.default_content()
+            driver.switch_to.default_content()
 
-        # التقاط الصورة (بدون رسم شبكة مؤقتاً لضمان الإرسال)
-        path = "screen.png"
-        driver.save_screenshot(path)
-        send_photo(path, "📸 لقطة الشاشة الحالية (بدون شبكة للتجربة)")
+        # التقاط الصورة ومعالجتها
+        raw_path = "raw_screen.png"
+        driver.save_screenshot(raw_path)
+        draw_grid_and_send(raw_path)
 
     except Exception as e:
-        error_msg = traceback.format_exc()
-        send_msg(f"⚠️ حدث خطأ أثناء التشغيل:\n{error_msg[:300]}")
+        send_msg(f"❌ خطأ: {str(e)}")
     finally:
-        if driver:
-            driver.quit()
-        send_msg("🏁 انتهت الجلسة.")
+        if driver: driver.quit()
 
 if __name__ == "__main__":
     run_bot()
