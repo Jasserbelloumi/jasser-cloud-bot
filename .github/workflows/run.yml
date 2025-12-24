@@ -1,8 +1,10 @@
 name: Jasser-Cloud-Automation
 on:
   push:
-    branches: [ main, master ]
-  workflow_dispatch: # يسمح لك بتشغيله يدوياً من GitHub
+    branches: [ main ]
+  schedule:
+    - cron: '0 * * * *' # سيعمل تلقائياً كل ساعة بالضبط
+  workflow_dispatch:
 
 jobs:
   build:
@@ -14,7 +16,6 @@ jobs:
         with:
           python-version: '3.9'
       - name: Install dependencies
-        run: |
-          pip install selenium webdriver-manager
+        run: pip install selenium webdriver-manager requests
       - name: Run Selenium Bot
         run: python bot.py
