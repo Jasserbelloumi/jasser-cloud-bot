@@ -6,23 +6,23 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.common.action_chains import ActionChains
 
 TOKEN = "8295326912:AAHvVkEnCcryYxnovkD8yQawhBizJA_QE6w"
 CHAT_ID = "5653032481"
 
 def send_snap(driver, caption):
-    # نضبط المتصفح ليكون طويلاً جداً لضمان عدم قطع أي جزء
-    original_size = driver.get_window_size()
-    driver.set_window_size(500, 2000) 
-    
-    path = "full_captcha_view.png"
+    driver.set_window_size(500, 1800) 
+    path = "captcha_task.png"
     driver.save_screenshot(path)
     with open(path, 'rb') as f:
-        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendPhoto", 
-                      data={'chat_id': CHAT_ID, 'caption': caption}, files={'photo': f})
-    
-    # إعادة الحجم الأصلي بعد التصوير
-    driver.set_window_size(original_size['width'], original_size['height'])
+        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendPhoto", data={'chat_id': CHAT_ID, 'caption': caption}, files={'photo': f})
+
+def handle_click(driver, x, y):
+    # وظيفة للضغط على إحداثيات محددة داخل الصفحة
+    actions = ActionChains(driver)
+    actions.move_by_offset(x, y).click().perform()
+    actions.move_by_offset(-x, -y).perform() # العودة للمركز
 
 def run_bot():
     options = Options()
@@ -38,25 +38,12 @@ def run_bot():
         driver.get("https://www.like4like.org/register.php")
         time.sleep(10)
         
-        # محاولة إظهار الكابتشا إذا لم تكن ظاهرة
-        try:
-            frames = driver.find_elements(By.TAG_NAME, "iframe")
-            for frame in frames:
-                if "recaptcha" in frame.get_attribute("src"):
-                    driver.switch_to.frame(frame)
-                    anchor = driver.find_elements(By.ID, "recaptcha-anchor")
-                    if anchor:
-                        driver.execute_script("arguments[0].click();", anchor[0])
-                    driver.switch_to.default_content()
-                    time.sleep(5) # انتظار ظهور صور التحدي
-        except: pass
-
-        # تصوير الصفحة كاملة مع التركيز على منطقة الكابتشا
-        send_snap(driver, "📸 لقطة شاشة كاملة (انظر أسفل الصفحة لرؤية الكابتشا كاملة)")
-
-        # انتظار إضافي في حال كانت الصور تتحمل ببطء
-        time.sleep(15)
-        send_snap(driver, "🔄 تحديث الصورة (للتأكد من ظهور المربعات كاملة)")
+        # التقاط صورة التحدي الحالية
+        send_snap(driver, "📸 أرسل لي الأرقام التي تريد الضغط عليها (قيد التطوير) أو انتظر التحديث التلقائي.")
+        
+        # سأبقي البوت نشطاً بانتظار أوامرك البرمجية
+        # يمكنك إرسال إحداثيات الضغط عبر ميزة /code التي فعلناها سابقاً
+        time.sleep(60)
 
     finally:
         driver.quit()
