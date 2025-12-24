@@ -10,8 +10,14 @@ from webdriver_manager.chrome import ChromeDriverManager
 TOKEN = "8295326912:AAHvVkEnCcryYxnovkD8yQawhBizJA_QE6w"
 CHAT_ID = "5653032481"
 
-def send_snap(driver, caption):
-    path = "captcha_check.png"
+def send_msg(text):
+    requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json={'chat_id': CHAT_ID, 'text': text})
+
+def send_full_snap(driver, caption):
+    # إجبار المتصفح على أبعاد ضخمة جداً لرؤية النافذة العائمة
+    driver.set_window_size(600, 2500)
+    time.sleep(2)
+    path = "full_view.png"
     driver.save_screenshot(path)
     with open(path, 'rb') as f:
         requests.post(f"https://api.telegram.org/bot{TOKEN}/sendPhoto", data={'chat_id': CHAT_ID, 'caption': caption}, files={'photo': f})
@@ -21,7 +27,6 @@ def run_bot():
     options.add_argument('--headless')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
-    options.add_argument('--window-size=500,1600')
     options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
     
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
@@ -30,30 +35,30 @@ def run_bot():
         driver.get("https://www.like4like.org/register.php")
         time.sleep(10)
 
-        # 🎯 محاولة النقر بكل الطرق الممكنة
-        found = False
+        # 1. البحث عن إطار الكابتشا والنقر عليه
         iframes = driver.find_elements(By.TAG_NAME, "iframe")
-        for index, frame in enumerate(iframes):
+        for frame in iframes:
             try:
                 driver.switch_to.frame(frame)
-                # البحث عن المربع بالمعرف الشهير لـ recaptcha
                 checkbox = driver.find_elements(By.ID, "recaptcha-anchor")
                 if checkbox:
-                    # النقر باستخدام جافا سكريبت لضمان التنفيذ
                     driver.execute_script("arguments[0].click();", checkbox[0])
-                    found = True
                     driver.switch_to.default_content()
+                    time.sleep(7) # انتظار ظهور الصور
                     break
                 driver.switch_to.default_content()
             except:
                 driver.switch_to.default_content()
 
-        if found:
-            time.sleep(8) # انتظار ظهور صور التحدي
-            send_snap(driver, "✅ تم النقر بنجاح! هل ظهرت الصور الآن؟")
-        else:
-            send_snap(driver, "❌ لم أجد مربع الكابتشا للنقر عليه.")
+        # 2. الآن، أهم خطوة: جعل نافذة الكابتشا تظهر بالكامل عبر التمرير (Scrolling)
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight / 2);")
+        time.sleep(2)
+        
+        # 3. إرسال الصورة الكاملة
+        send_full_snap(driver, "📸 لقطة شاشة مكبرة وعميقة. هل تظهر الصور كاملة الآن؟")
 
+    except Exception as e:
+        send_msg(f"❌ خطأ: {str(e)}")
     finally:
         driver.quit()
 
