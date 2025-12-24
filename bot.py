@@ -1,6 +1,7 @@
 import time
 import os
 import requests
+import traceback
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
@@ -8,73 +9,79 @@ from selenium.webdriver.common.by import By
 from webdriver_manager.chrome import ChromeDriverManager
 from PIL import Image, ImageDraw
 
+# 🔑 البيانات الخاصة بك
 TOKEN = "8295326912:AAHvVkEnCcryYxnovkD8yQawhBizJA_QE6w"
 CHAT_ID = "5653032481"
 
 def send_msg(text):
     requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json={'chat_id': CHAT_ID, 'text': text})
 
-def draw_grid_on_captcha(image_path):
-    with Image.open(image_path) as img:
-        draw = ImageDraw.Draw(img)
-        w, h = img.size
-        # رسم شبكة 4x4 (16 مربعاً)
-        cols, rows = 4, 4
-        sw, sh = w // cols, h // rows
-        
-        counter = 1
-        for r in range(rows):
-            for c in range(cols):
-                x1, y1 = c * sw, r * sh
-                x2, y2 = x1 + sw, y1 + sh
-                draw.rectangle([x1, y1, x2, y2], outline="yellow", width=3)
-                # وضع الرقم في المنتصف ليكون واضحاً
-                draw.text((x1 + sw//2 - 5, y1 + sh//2 - 5), str(counter), fill="yellow")
-                counter += 1
-        img.save("grid_final.png")
-
 def run_bot():
     options = Options()
     options.add_argument('--headless')
     options.add_argument('--no-sandbox')
-    options.add_argument('--window-size=1000,2000') # حجم كبير لضمان الرؤية
+    options.add_argument('--disable-dev-shm-usage')
+    options.add_argument('--window-size=900,1800')
+    options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
     
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
-    
+    driver = None
     try:
+        send_msg("🚦 بدأت العملية: جاري تشغيل المتصفح...")
+        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+        
+        send_msg("🌐 جاري الدخول إلى صفحة التسجيل...")
         driver.get("https://www.like4like.org/register.php")
         time.sleep(10)
         
-        # البحث عن إطار الكابتشا والضغط عليه
+        send_msg("🔎 البحث عن مربع الكابتشا للنقر عليه...")
         iframes = driver.find_elements(By.TAG_NAME, "iframe")
-        captcha_frame = None
+        found = False
         for frame in iframes:
-            if "recaptcha" in frame.get_attribute("src"):
-                captcha_frame = frame
-                break
-        
-        if captcha_frame:
-            # النقر على المربع أولاً
-            driver.switch_to.frame(captcha_frame)
-            driver.execute_script("document.getElementById('recaptcha-anchor').click();")
-            driver.switch_to.default_content()
-            time.sleep(8)
-            
-            # التقاط صورة مركزة لمنطقة الكابتشا فقط
-            driver.save_screenshot("raw_page.png")
-            # رسم الشبكة على الصورة الناتجة
-            draw_grid_on_captcha("raw_page.png")
-            
-            with open("grid_final.png", 'rb') as f:
-                requests.post(f"https://api.telegram.org/bot{TOKEN}/sendPhoto", 
-                              data={'chat_id': CHAT_ID, 'caption': "🔢 الأرقام الصفراء جاهزة. اختر المربعات المطلوبة:"}, files={'photo': f})
-        else:
-            send_msg("❌ لم يتم العثور على إطار الكابتشا.")
+            try:
+                driver.switch_to.frame(frame)
+                checkbox = driver.find_elements(By.ID, "recaptcha-anchor")
+                if checkbox:
+                    driver.execute_script("arguments[0].click();", checkbox[0])
+                    found = True
+                    driver.switch_to.default_content()
+                    break
+                driver.switch_to.default_content()
+            except:
+                driver.switch_to.default_content()
 
+        if found:
+            send_msg("✅ تم النقر! انتظر 10 ثوانٍ لظهور الصور...")
+            time.sleep(10)
+        else:
+            send_msg("⚠️ لم أجد المربع، سأصور الصفحة على أي حال.")
+
+        # التقاط الصورة ورسم الشبكة
+        path = "final_step.png"
+        driver.save_screenshot(path)
+        
+        # رسم الشبكة الصفراء بالأرقام
+        with Image.open(path) as img:
+            draw = ImageDraw.Draw(img)
+            w, h = img.size
+            # رسم 16 مربعاً (4*4)
+            sw, sh = w // 4, h // 4
+            for r in range(4):
+                for c in range(4):
+                    x, y = c * sw, r * sh
+                    draw.rectangle([x, y, x+sw, y+sh], outline="yellow", width=3)
+                    draw.text((x+10, y+10), str((r*4)+c+1), fill="yellow")
+            img.save("grid_final.png")
+
+        with open("grid_final.png", 'rb') as f:
+            requests.post(f"https://api.telegram.org/bot{TOKEN}/sendPhoto", 
+                          data={'chat_id': CHAT_ID, 'caption': "🔢 الشبكة المرقمة جاهزة!"}, files={'photo': f})
+            
     except Exception as e:
-        send_msg(f"⚠️ حدث خطأ: {str(e)}")
+        send_msg(f"❌ حدث خطأ فني:\n{traceback.format_exc()}")
     finally:
-        driver.quit()
+        if driver:
+            driver.quit()
+            send_msg("🏁 انتهت المحاولة وإغلاق المتصفح.")
 
 if __name__ == "__main__":
     run_bot()
