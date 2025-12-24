@@ -1,99 +1,93 @@
 import time
 import os
 import requests
-import traceback
-import sys
-
-# محاولة تثبيت المكتبات الناقصة تلقائياً
-try:
-    from PIL import Image, ImageDraw
-except ImportError:
-    os.system(f"{sys.executable} -m pip install Pillow")
-    from PIL import Image, ImageDraw
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from webdriver_manager.chrome import ChromeDriverManager
+from PIL import Image, ImageDraw
 
 TOKEN = "8295326912:AAHvVkEnCcryYxnovkD8yQawhBizJA_QE6w"
 CHAT_ID = "5653032481"
 
 def send_msg(text):
-    try:
-        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json={'chat_id': CHAT_ID, 'text': text}, timeout=10)
-    except: pass
+    requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json={'chat_id': CHAT_ID, 'text': text})
 
-def send_photo(photo_path, caption):
+def get_last_command():
     try:
-        with open(photo_path, 'rb') as f:
-            requests.post(f"https://api.telegram.org/bot{TOKEN}/sendPhoto", 
-                          data={'chat_id': CHAT_ID, 'caption': caption}, files={'photo': f}, timeout=30)
-    except Exception as e:
-        send_msg(f"❌ فشل إرسال الصورة: {str(e)}")
+        url = f"https://api.telegram.org/bot{TOKEN}/getUpdates"
+        res = requests.get(url).json()
+        if res['result']:
+            return res['result'][-1]['message']['text'], res['result'][-1]['update_id']
+    except: pass
+    return None, None
 
 def draw_grid(input_path, output_path):
-    try:
-        with Image.open(input_path) as img:
-            draw = ImageDraw.Draw(img)
-            w, h = img.size
-            # الأبعاد التي طلبتها 900x1800 مقسمة لـ 16 مربعاً
-            sw, sh = w // 4, h // 4
-            for r in range(4):
-                for c in range(4):
-                    x, y = c * sw, r * sh
-                    draw.rectangle([x, y, x + sw, y + sh], outline="yellow", width=5)
-                    draw.text((x + 20, y + 20), str((r * 4) + c + 1), fill="yellow")
-            img.save(output_path)
-            return True
-    except Exception as e:
-        send_msg(f"⚠️ خطأ في معالجة الصورة: {str(e)}")
-        return False
+    with Image.open(input_path) as img:
+        draw = ImageDraw.Draw(img)
+        w, h = img.size
+        rows, cols = 6, 6  # شبكة 36 مربعاً كما طلبنا
+        sw, sh = w // cols, h // rows
+        for r in range(rows):
+            for c in range(cols):
+                x, y = c * sw, r * sh
+                draw.rectangle([x, y, x + sw, y + sh], outline="yellow", width=2)
+                draw.text((x + 5, y + 5), str((r * cols) + c + 1), fill="yellow")
+        img.save(output_path)
+        return sw, sh # نحتاج حجم المربع لحساب إحداثيات النقر
 
 def run_bot():
-    send_msg("🎬 محاولة V40: جاري التشغيل بالأبعاد الثابتة...")
-    
-    from selenium import webdriver
-    from selenium.webdriver.chrome.options import Options
-    from selenium.webdriver.chrome.service import Service
-    from webdriver_manager.chrome import ChromeDriverManager
-    from selenium.webdriver.common.by import By
-
     options = Options()
     options.add_argument('--headless')
     options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--window-size=900,1800')
-    options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
     
-    driver = None
     try:
-        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
         driver.get("https://www.like4like.org/register.php")
         time.sleep(10)
         
-        # تفعيل الكابتشا
-        iframes = driver.find_elements(By.TAG_NAME, "iframe")
-        for frame in iframes:
-            try:
-                driver.switch_to.frame(frame)
-                anchor = driver.find_elements(By.ID, "recaptcha-anchor")
-                if anchor:
-                    driver.execute_script("arguments[0].click();", anchor[0])
-                    driver.switch_to.default_content()
-                    send_msg("🖱️ تم الضغط.. جاري الانتظار لالتقاط الصورة.")
-                    time.sleep(12)
-                    break
-                driver.switch_to.default_content()
-            except: driver.switch_to.default_content()
-
-        # التقاط الصورة ومعالجتها
+        # 1. تفعيل الكابتشا والتقاط الصورة المرقمة
         driver.save_screenshot("raw.png")
-        if draw_grid("raw.png", "grid.png"):
-            send_photo("grid.png", "🔢 الشبكة الصفراء جاهزة بالأبعاد المطلوبة!")
-        else:
-            send_photo("raw.png", "📸 الصورة الأصلية (فشل الرسم)")
+        sw, sh = draw_grid("raw.png", "grid.png")
+        with open("grid.png", 'rb') as f:
+            requests.post(f"https://api.telegram.org/bot{TOKEN}/sendPhoto", data={'chat_id': CHAT_ID}, files={'photo': f})
+        
+        send_msg("🎯 أرسل أرقام المربعات مفصولة بفاصلة (مثال: 14,15,20)")
 
-    except Exception as e:
-        send_msg(f"❌ خطأ تقني حرج: {str(e)}")
+        # 2. حلقة الاستماع للأوامر والضغط
+        last_id = 0
+        while True:
+            text, up_id = get_last_command()
+            if text and up_id > last_id:
+                last_id = up_id
+                if text.lower() == 'done': break
+                
+                nums = text.split(',')
+                for n in nums:
+                    try:
+                        n = int(n.strip())
+                        # حساب موقع النقر بناءً على رقم المربع (1-36)
+                        row = (n - 1) // 6
+                        col = (n - 1) % 6
+                        click_x = (col * sw) + (sw // 2)
+                        click_y = (row * sh) + (sh // 2)
+                        
+                        # تنفيذ النقرة باستخدام JavaScript
+                        driver.execute_script(f"document.elementFromPoint({click_x}, {click_y}).click();")
+                        send_msg(f"✅ تم النقر على المربع {n}")
+                    except: pass
+                
+                time.sleep(2)
+                driver.save_screenshot("result.png")
+                with open("result.png", 'rb') as f:
+                    requests.post(f"https://api.telegram.org/bot{TOKEN}/sendPhoto", data={'chat_id': CHAT_ID, 'caption': "الصورة بعد النقر"}, files={'photo': f})
+            
+            time.sleep(3)
+
     finally:
-        if driver: driver.quit()
-        send_msg("🔚 انتهت العملية.")
+        driver.quit()
 
 if __name__ == "__main__":
     run_bot()
