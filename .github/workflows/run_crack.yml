@@ -1,4 +1,4 @@
-name: Facebook Crack Engine
+name: Facebook Selenium Crack
 on:
   push:
     branches: [ main ]
@@ -15,9 +15,14 @@ jobs:
         with:
           python-version: '3.9'
           
-      - name: Install Dependencies
+      - name: Install Selenium and Requirements
         run: |
-          pip install requests beautifulsoup4 pillow
+          pip install selenium webdriver-manager requests beautifulsoup4
+          
+      - name: Install Chrome Browser
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y google-chrome-stable
           
       - name: Run Cracking Script
         env:
